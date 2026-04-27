@@ -743,11 +743,32 @@ async function startScanner(videoId, crosshairId, idleId, statusId, onResult) {
     await video.play();
     if (status) status.textContent = 'Point camera at barcode...';
 
-    if (typeof ZXing !== 'undefined') {
+    if ('BarcodeDetector' in window) {
+      let active = true;
+      codeReader = { reset: () => { active = false; } };
+      const detector = new BarcodeDetector();
+      const tick = async () => {
+        if (!active || video.readyState < 2) {
+          if (active) requestAnimationFrame(tick);
+          return;
+        }
+        try {
+          const codes = await detector.detect(video);
+          if (codes.length > 0 && active) {
+            active = false;
+            onResult(codes[0].rawValue);
+            stopScanner();
+            return;
+          }
+        } catch(e) {}
+        if (active) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    } else if (typeof ZXing !== 'undefined') {
       const hints = new Map();
       hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
       codeReader = new ZXing.BrowserMultiFormatReader(hints, 500);
-      codeReader.decodeFromVideoElement(video, (result, err) => {
+      codeReader.decodeFromStream(scanStream, video, (result, err) => {
         if (result) {
           onResult(result.getText());
           stopScanner();
